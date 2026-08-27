@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎵 CELEFT 音乐仓库</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 0 20px;
+            background: #f7f7f7;
+        }
+        .player-box {
+            background: #fff;
+            padding: 25px 20px;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        }
+        h2 {
+            margin-top: 0;
+            font-weight: 500;
+            color: #1a1a1a;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        #audio-player {
+            width: 100%;
+            margin: 16px 0 12px;
+            border-radius: 8px;
+        }
+        .status {
+            font-size: 14px;
+            color: #555;
+            margin: 8px 0 12px;
+            min-height: 22px;
+        }
+        #playlist {
+            list-style: none;
+            padding: 0;
+            margin: 12px 0 0;
+            max-height: 420px;
+            overflow-y: auto;
+            border-top: 1px solid #eee;
+        }
+        #playlist li {
+            padding: 12px 14px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.15s;
+            border-radius: 6px;
+        }
+        #playlist li:hover {
+            background: #f0f4ff;
+        }
+        #playlist li.active {
+            background: #e3edfc;
+            font-weight: 600;
+            color: #0a58ca;
+        }
+        .badge {
+            background: #e9ecef;
+            color: #495057;
+            padding: 2px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 0.3px;
+        }
+        .footer {
+            margin-top: 16px;
+            font-size: 13px;
+            color: #888;
+            text-align: center;
+        }
+        /* 滚动条样式 */
+        #playlist::-webkit-scrollbar { width: 5px; }
+        #playlist::-webkit-scrollbar-thumb { background: #ccc; border-radius: 10px; }
+    </style>
+</head>
+<body>
+    <div class="player-box">
+        <h2>🎵 我的音乐库</h2>
+        <audio id="audio-player" controls preload="metadata"></audio>
+        <div class="status" id="status">⏳ 正在扫描 music 文件夹...</div>
+        <ul id="playlist"></ul>
+        <div class="footer">✨ 自动扫描 · 点击列表切换 · 自动连播</div>
+    </div>
+
+    <script>
+        // ============================================================
+        // 🔧 以下三个变量已按你的仓库信息填好，直接使用即可
+        // ============================================================
+        const GITHUB_USERNAME = 'CELEFT';
+        const GITHUB_REPO = 'djr-music';
+        const BRANCH = 'main';          // 如果你用的是 master 请改为 'master'
+        const MUSIC_FOLDER = 'music';
+
+        // ---------- 以下代码无需修改 ----------
+        const API_URL = `https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/contents/${MUSIC_FOLDER}`;
+        const RAW_BASE = `https://raw.githubusercontent.com/${GITHUB_USERNAME}/${GITHUB_REPO}/${BRANCH}/${MUSIC_FOLDER}`;
+
+        const audio = document.getElementById('audio-player');
+        const playlistEl = document.getElementById('playlist');
+        const statusEl = document.getElementById('status');
+
+        let songs = [];
+
+        // 获取音乐列表
+        async function fetchMusic() {
+            try {
+                const resp = await fetch(API_URL);
+                if (!resp.ok) throw new Error(`HTTP ${resp.status} — 请检查仓库名、分支及文件夹是否存在`);
+                const data = await resp.json();
+
+                // 只保留 .mp3 文件（忽略子目录）
+                songs = data.filter(item =>
+                    item.type === 'file' &&
+                    item.name.toLowerCase().endsWith('.mp3')
+                );
+
+                if (songs.length === 0) {
+                    statusEl.textContent = '❌ 在 music 文件夹中没有找到 MP3 文件';
+                    return;
+                }
+
+                statusEl.textContent = `✅ 共找到 ${songs.length} 首歌曲`;
+                renderPlaylist();
+                playSong(0);  // 自动加载第一首
+
+            } catch (err) {
+                statusEl.textContent = `❌ 扫描失败: ${err.message}`;
+                console.error(err);
+            }
+        }
+
+        // 渲染列表
+        function renderPlaylist() {
+            playlistEl.innerHTML = '';
+            songs.forEach((song, idx) => {
+                const li = document.createElement('li');
+                // 显示文件名（去掉 .mp3 后缀更清爽）
+                const name = song.name.replace(/\.mp3$/i, '');
+                li.innerHTML = `<span>${name}</span><span class="badge">MP3</span>`;
+                li.dataset.index = idx;
+                li.addEventListener('click', () => playSong(idx));
+                playlistEl.appendChild(li);
+            });
+        }
+
+        // 播放第 index 首
+        function playSong(index) {
+            if (index < 0 || index >= songs.length) return;
+            const song = songs[index];
+
+            // 关键：对文件名进行 URL 编码，解决空格、中文、& 等特殊字符
+            const encodedName = encodeURIComponent(song.name);
+            const url = `${RAW_BASE}/${encodedName}`;
+
+            audio.src = url;
+            audio.play().catch(() => {
+                // 浏览器自动播放策略阻止，用户点击播放按钮即可
+                console.log('⏸️ 自动播放被拦截，用户手动点击播放即可');
+            });
+
+            // 高亮当前项
+            document.querySelectorAll('#playlist li').forEach((li, i) => {
+                li.classList.toggle('active', i === index);
+            });
+
+            statusEl.textContent = `▶️ 正在播放：${song.name.replace(/\.mp3$/i, '')}`;
+        }
+
+        // 自动播放下一首
+        audio.addEventListener('ended', () => {
+            const activeLi = document.querySelector('#playlist li.active');
+            if (!activeLi) return;
+            const current = parseInt(activeLi.dataset.index);
+            const next = current + 1;
+            if (next < songs.length) {
+                playSong(next);
+            } else {
+                statusEl.textContent = '⏹️ 全部播放完毕';
+            }
+        });
+
+        // 启动
+        fetchMusic();
+    </script>
+</body>
+</html>
